@@ -1,8 +1,11 @@
 from bs4 import BeautifulSoup
 import requests
 import sqlite3
+import click
+from flask import Flask
 
 
+app = Flask(__name__)
 DATA_FILE = 'data.db'
 
 def page_scraper(url):
@@ -25,7 +28,6 @@ def page_scraper(url):
     
     return companies_data
 
-
 def init_db():
     conn = sqlite3.connect(DATA_FILE)
     cur = conn.cursor()
@@ -43,9 +45,7 @@ def init_db():
             market_cap TEXT
         )
     ''')
-    
     conn.close()
-
 
 def populate_db():
     urls = [
@@ -68,15 +68,60 @@ def populate_db():
     ''', companies_data)
     conn.commit()
     conn.close()
+    
+@app.cli.command("help")
+def help():
+    print('''
+usage: Flask [view all] [view <code>] [country <country>] [countries]
 
+    view         Show selected company data
+    country      Show top companies from a selected country
+    countries    Show the top countries ordered by number of entries
+    ''')
 
-def view_db():
+@app.cli.command("view")
+@click.argument("code")
+def view_company_data(code):
     conn = sqlite3.connect(DATA_FILE)
     cur = conn.cursor()
-    cur.execute('SELECT * FROM companies')
+    if code == 'all':
+        cur.execute('SELECT * FROM companies')
+        data = cur.fetchall()
+        for company in data:
+            print(company)
+    else:
+        cur.execute('SELECT * FROM companies WHERE code = ?', (code,))
+        data = cur.fetchall()
+        print(data)
+        conn.close()
+        
+@app.cli.command("country")
+@click.argument("country")
+def view_country_data(country):
+    conn = sqlite3.connect(DATA_FILE)
+    cur = conn.cursor()
+    cur.execute('SELECT * FROM companies WHERE country = ?', (country,))
     data = cur.fetchall()
-    print(data)
+    for company in data:
+        print(company)
+    conn.close()
+        
+@app.cli.command("countries")
+def view_top_countries():
+    conn = sqlite3.connect(DATA_FILE)
+    cur = conn.cursor()
+    cur.execute('''
+        SELECT count(*) as num_companies, country
+        FROM companies
+        GROUP BY country
+        ORDER BY num_companies DESC
+    ''')
+    data = cur.fetchall()
+    for country in data:
+        print(country)
+    conn.close()
 
-init_db()
-populate_db()
-view_db()
+if __name__ == '__main__':
+    init_db()
+    populate_db() 
+    app.run()
